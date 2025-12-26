@@ -1,96 +1,64 @@
 package smsk.smoothscroll.mixin.Widgets;
 
+import net.minecraft.client.gui.widget.EntryListWidget;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
-
-import com.llamalad7.mixinextras.injector.wrapmethod.WrapMethod;
-import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
-
-import net.minecraft.client.gui.DrawContext;
-import net.minecraft.client.gui.screen.narration.NarrationMessageBuilder;
-import net.minecraft.client.gui.widget.ClickableWidget;
-import net.minecraft.client.gui.widget.ScrollableWidget;
 import smsk.smoothscroll.SmoothSc;
-import smsk.smoothscroll.cfg.SmScCfg;
 
-@Mixin(ScrollableWidget.class)
-public class ScrollableWidgetMixin extends ClickableWidget {
-    @Shadow private double scrollY; // scroll position - number of pixels scrolled down (up < down)
-
-    @Unique private double smoothScrollPos;
-    @Unique private double targetScrollPos;
-
-    @Unique private boolean updateScActive = false; // this makes the mod know, when things aren't working as expected and lets the user scroll non-smoothly
-    @Unique private boolean noSetScrollT = false;
-
-    @Inject(method = "setScrollY", at = @At("TAIL"))
-    private void setScrollT(double s, CallbackInfo ci) {
-        if (noSetScrollT) return;
-        targetScrollPos = scrollY;
-        smoothScrollPos = scrollY;
-    }
-
-    @Inject(method = "drawScrollbar", at = @At("HEAD"), require = 0)
-    private void updateScroll(DrawContext dc, int mx, int my, CallbackInfo ci) {
-        if (SmScCfg.entryListSmoothness == 0) return;
-        updateScActive = true;
-
-
-        smoothScrollPos = (smoothScrollPos - targetScrollPos) * Math.pow(SmScCfg.entryListSmoothness, SmoothSc.getLastFrameDuration()) + targetScrollPos;
-        scrollY = Math.round(smoothScrollPos);
-
-        // TODO not so pretty workaround, might fix later
-        // basically setscroll also makes the screen redraw
-        noSetScrollT = true;
-        setScrollY(scrollY);
-        noSetScrollT = false;
-    }
-
-    @WrapMethod(method = "mouseScrolled")
-    private boolean mouseScrolledWrap(double mouseX, double mouseY, double hA, double vA, Operation<Boolean> operation) {
-        noSetScrollT = true;
-        var prevScrollPos = scrollY;
-        if (SmScCfg.entryListSmoothness != 0) {
-            setScrollY(targetScrollPos);
+@Mixin(EntryListWidget.class)
+public abstract class ScrollableWidgetMixin {
+    @Shadow private double scrollAmount;
+    
+    @Unique private double smoothscroll$targetScroll = 0;
+    @Unique private double smoothscroll$currentScroll = 0;
+    @Unique private double smoothscroll$scrollVelocity = 0;
+    @Unique private boolean smoothscroll$initialized = false;
+    
+    @Inject(method = "mouseScrolled", at = @At("HEAD"), cancellable = true)
+    private void onMouseScrolled(double mouseX, double mouseY, double amount, CallbackInfoReturnable<Boolean> cir) {
+        if (!SmoothSc.getConfig().enableInWidgets) {
+            return;
         }
-        var ret = operation.call(mouseX, mouseY, hA, vA);
-
-        if (SmScCfg.entryListAmount != 0 && ret) {
-            setScrollY(targetScrollPos - SmScCfg.entryListAmount * vA);
+        
+        if (!smoothscroll$initialized) {
+            smoothscroll$targetScroll = scrollAmount;
+            smoothscroll$currentScroll = scrollAmount;
+            smoothscroll$initialized = true;
         }
-        targetScrollPos = scrollY;
-        if (SmScCfg.entryListSmoothness != 0) {
-            setScrollY(prevScrollPos);
+        
+        double scrollDelta = amount * 20.0 * SmoothSc.getConfig().getScrollSpeed();
+        smoothscroll$targetScroll = Math.max(0, smoothscroll$targetScroll - scrollDelta);
+        
+        cir.setReturnValue(true);
+    }
+    
+    @Inject(method = "render", at = @At("HEAD"))
+    private void onRender(CallbackInfo ci) {
+        if (!SmoothSc.getConfig().enableInWidgets) {
+            return;
         }
-        noSetScrollT = false;
-        return ret;
-    }
-
-    @Shadow
-    public void setScrollY(double sc) {}
-
-
-
-
-
-
-    public ScrollableWidgetMixin() {
-        super(0, 0, 0, 0, null);
-    }
-
-    @Override
-    protected void appendClickableNarrations(NarrationMessageBuilder builder) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'appendClickableNarrations'");
-    }
-
-    @Override
-    public void renderWidget(DrawContext context, int mouseX, int mouseY, float delta) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'renderWidget'");
+        
+        if (!smoothscroll$initialized) {
+            smoothscroll$targetScroll = scrollAmount;
+            smoothscroll$currentScroll = scrollAmount;
+            smoothscroll$initialized = true;
+        }
+        
+        double diff = smoothscroll$targetScroll - smoothscroll$currentScroll;
+        smoothscroll$scrollVelocity += diff * SmoothSc.getConfig().getAcceleration();
+        smoothscroll$scrollVelocity *= SmoothSc.getConfig().getFriction();
+        smoothscroll$currentScroll += smoothscroll$scrollVelocity;
+        
+        scrollAmount = smoothscroll$currentScroll;
+        
+        if (Math.abs(diff) < 0.1 && Math.abs(smoothscroll$scrollVelocity) < 0.1) {
+            smoothscroll$currentScroll = smoothscroll$targetScroll;
+            smoothscroll$scrollVelocity = 0;
+        }
     }
 }
