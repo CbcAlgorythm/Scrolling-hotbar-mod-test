@@ -43,8 +43,8 @@ dependencies {
 	modImplementation "net.fabricmc.fabric-api:fabric-api:0.92.2+1.20.1"
 
 	// MixinExtras - Required for @WrapMethod and other features
-	implementation annotationProcessor("com.github.LlamaLad7:MixinExtras:0.3.5")
-	include("com.github.LlamaLad7:MixinExtras:0.3.5")
+	modImplementation "maven.modrinth:mixinextras:0.3.5"
+	include "maven.modrinth:mixinextras:0.3.5"
 	
 	// Optional dependencies
 	modCompileOnly ("com.terraformersmc:modmenu:${project.modmenu_version}")
